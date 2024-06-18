@@ -13,10 +13,12 @@ namespace MedIapp_API.Controllers
     public class PacientesController : ControllerBase
     {
         private readonly ILogger<PacientesController> _logger;
+        private readonly ApplicationDbContext _db;
 
-        public PacientesController(ILogger<PacientesController> logger)
+        public PacientesController(ILogger<PacientesController> logger, ApplicationDbContext db)
         {
             _logger = logger;
+            _db = db;
         }
 
         [HttpGet]
@@ -35,7 +37,7 @@ namespace MedIapp_API.Controllers
             }
 
             _logger.LogInformation("Se encontraron {Count} pacientes.", pacientes.Count);
-            return Ok(PacientesMockData.PacientesList);
+            return Ok(_db.Pacientes.ToList());
         }
 
 
@@ -53,7 +55,8 @@ namespace MedIapp_API.Controllers
                 return BadRequest("El ID debe ser mayor que cero.");
             }
 
-            var paciente = PacientesMockData.PacientesList.FirstOrDefault(v => v.Id == id);
+            //var paciente = PacientesMockData.PacientesList.FirstOrDefault(v => v.Id == id);
+            var paciente= _db.Pacientes.FirstOrDefault(x => x.Id == id);
 
             if (paciente == null)
             {
@@ -93,7 +96,7 @@ namespace MedIapp_API.Controllers
             }
 
             // Verificar si ya existe un paciente con la misma identificación
-            if (PacientesMockData.PacientesList.Any(v => v.Identificacion == pacientesDTO.Identificacion))
+            if (_db.Pacientes.Any(v => v.Identificación == pacientesDTO.Identificacion))
             {
                 _logger.LogWarning("Registro existente con la misma identificación.");
                 ModelState.AddModelError("Identificacion", "Registro existente con la misma identificación");
@@ -107,7 +110,7 @@ namespace MedIapp_API.Controllers
             }
 
             // Verificar si ya existe un paciente con el mismo ID
-            if (PacientesMockData.PacientesList.Any(v => v.Id == pacientesDTO.Id))
+            if (_db.Pacientes.Any(v => v.Id == pacientesDTO.Id))
             {
                 _logger.LogWarning("Registro existente con el mismo ID.");
                 ModelState.AddModelError("Id", "Registro existente");
@@ -115,7 +118,7 @@ namespace MedIapp_API.Controllers
             }
 
             // Verificar si ya existe un paciente con la misma combinación de ID y nombre
-            if (PacientesMockData.PacientesList.Any(v => v.Id == pacientesDTO.Id && v.Nombre == pacientesDTO.Nombre))
+            if (_db.Pacientes.Any(v => v.Id == pacientesDTO.Id && v.Nombre == pacientesDTO.Nombre))
             {
                 _logger.LogWarning("Registro existente con el mismo ID y nombre.");
                 ModelState.AddModelError("IdNombre", "Registro existente con el mismo ID y nombre");
@@ -128,14 +131,30 @@ namespace MedIapp_API.Controllers
                 return StatusCode(StatusCodes.Status500InternalServerError);
             }
 
-            pacientesDTO.Id = PacientesMockData.PacientesList.OrderByDescending(v => v.Id).FirstOrDefault()?.Id + 1 ?? 1;
-            PacientesMockData.PacientesList.Add(pacientesDTO);
+            //pacientesDTO.Id = _db.Pacientes.OrderByDescending(v => v.Id).FirstOrDefault()?.Id + 1 ?? 1;
+            //PacientesMockData.PacientesList.Add(pacientesDTO);
 
             _logger.LogInformation($"Paciente creado con ID {pacientesDTO.Id}.");
 
+          Paciente modelo = new()
+            {
+                Id = pacientesDTO.Id,
+                Nombre = pacientesDTO.Nombre,
+                Apellido = pacientesDTO.Apellido,
+                FechaNacimiento = pacientesDTO.FechaNacimiento,
+                Direccion = pacientesDTO.Direccion,
+                Telefono = pacientesDTO.Telefono,
+                Email = pacientesDTO.Email,
+                Identificación = pacientesDTO.Identificacion,
+                Observacion = pacientesDTO.Observacion,
+                Examen = pacientesDTO.Examen,
+                ExamenTipo = pacientesDTO.ExamenTipo,
+                ExamenNombre = pacientesDTO.ExamenNombre
+            };
+            _db.Pacientes.Add( modelo );
+            _db.SaveChanges();
+
             return CreatedAtRoute("GetPaciente", new { Id = pacientesDTO.Id, pacientesDTO });
-
-
 
         }
 

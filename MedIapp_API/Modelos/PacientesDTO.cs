@@ -33,5 +33,17 @@ namespace MedIapp_API.Modelos
         [Required]
         [MaxLength(20)]
         public string Identificacion { get; set; }
+
+        [MaxLength(250)]
+        public string Observacion { get; set; }
+
+        // Campos opcionales para almacenar el archivo
+        public byte[] Examen { get; set; } // Archivo del examen en formato binario
+
+        [MaxLength(50)]
+        public string ExamenTipo { get; set; } // Tipo de archivo del examen (por ejemplo, 'image/png', 'application/pdf')
+
+        [MaxLength(100)]
+        public string ExamenNombre { get; set; } // Nombre del archivo del examen
     }
 }
