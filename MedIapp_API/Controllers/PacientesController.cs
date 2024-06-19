@@ -2,6 +2,7 @@
 using MedIapp_API.Modelos;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Win32;
 using static System.Runtime.InteropServices.JavaScript.JSType;
@@ -28,16 +29,32 @@ namespace MedIapp_API.Controllers
         {
             _logger.LogInformation("Iniciando la consulta de todos los pacientes.");
 
-            var pacientes = PacientesMockData.PacientesList;
+            var pacientes = _db.Pacientes.ToList();
 
             if (!pacientes.Any())
             {
                 _logger.LogWarning("No se encontraron pacientes.");
-                return NotFound("No se encontraron pacientes.");
+                return NotFound(new { Message = "No se encontraron pacientes." });
             }
 
+            var pacientesDTO = pacientes.Select(p => new PacientesDTO
+            {
+                Id = p.Id,
+                Nombre = p.Nombre,
+                Apellido = p.Apellido,
+                FechaNacimiento = p.FechaNacimiento,
+                Direccion = p.Direccion,
+                Telefono = p.Telefono,
+                Email = p.Email,
+                Identificacion = p.Identificación,
+                Observacion = p.Observacion,
+                Examen = p.Examen,
+                ExamenTipo = p.ExamenTipo,
+                ExamenNombre = p.ExamenNombre
+            }).ToList();
+
             _logger.LogInformation("Se encontraron {Count} pacientes.", pacientes.Count);
-            return Ok(_db.Pacientes.ToList());
+            return Ok(pacientesDTO);
         }
 
 
@@ -138,7 +155,7 @@ namespace MedIapp_API.Controllers
 
           Paciente modelo = new()
             {
-                Id = pacientesDTO.Id,
+                
                 Nombre = pacientesDTO.Nombre,
                 Apellido = pacientesDTO.Apellido,
                 FechaNacimiento = pacientesDTO.FechaNacimiento,
@@ -166,23 +183,32 @@ namespace MedIapp_API.Controllers
         public IActionResult DeletePaciente(int id)
         {
             _logger.LogInformation("Iniciando el borrado de la información.");
+
             if (id == 0)
             {
                 _logger.LogError("Error: el id ingresado es 0.");
-                return BadRequest();
+                return BadRequest(new { Message = "Error: el id ingresado no puede ser 0." });
             }
 
-            var paciente = PacientesMockData.PacientesList.FirstOrDefault(v => v.Id == id);
+            var paciente = _db.Pacientes.FirstOrDefault(v => v.Id == id);
             if (paciente == null)
             {
                 _logger.LogError($"Error: no se encontró ningún paciente con el id {id}.");
-                return NotFound();
+                return NotFound(new { Message = $"Error: no se encontró ningún paciente con el id {id}." });
             }
 
-            _logger.LogInformation($"Usuario con id {id} borrado.");
-            PacientesMockData.PacientesList.Remove(paciente);
-            return NoContent();
-
+            try
+            {
+                _logger.LogInformation($"Usuario con id {id} borrado.");
+                _db.Pacientes.Remove(paciente);
+                _db.SaveChanges();
+                return Ok(new { Message = $"Paciente con ID {id} borrado correctamente." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al borrar el paciente con ID {id}.");
+                return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "Error al borrar el paciente. Por favor, inténtelo de nuevo más tarde." });
+            }
         }
 
         [HttpPut ("id:int")]
@@ -199,24 +225,31 @@ namespace MedIapp_API.Controllers
                 return BadRequest();
             }
 
-            var paciente = PacientesMockData.PacientesList.FirstOrDefault(v => v.Id == id);
-            if (paciente == null)
-            {
-                _logger.LogWarning("Paciente no encontrado con el ID: {Id}", id);
-                return NotFound();
-            }
 
             _logger.LogInformation("Actualizando datos del paciente con ID: {Id}", id);
-            paciente.Nombre = pacientesDTO.Nombre;
-            paciente.Apellido = pacientesDTO.Apellido;
-            paciente.Identificacion = pacientesDTO.Identificacion;
-            paciente.FechaNacimiento = pacientesDTO.FechaNacimiento;
-            paciente.Telefono = pacientesDTO.Telefono;
-            paciente.Direccion = pacientesDTO.Direccion;
-            paciente.Email = pacientesDTO.Email;
+            Paciente modelo = new()
+            {
+                Id = pacientesDTO.Id,
+                Nombre = pacientesDTO.Nombre,
+                Apellido = pacientesDTO.Apellido,
+                Identificación = pacientesDTO.Identificacion,
+                FechaNacimiento = pacientesDTO.FechaNacimiento,
+                Telefono = pacientesDTO.Telefono,
+                Direccion = pacientesDTO.Direccion,
+                Email = pacientesDTO.Email,
+                Observacion = pacientesDTO.Observacion,
+                Examen = pacientesDTO.Examen,
+                ExamenTipo = pacientesDTO.ExamenTipo,
+                ExamenNombre = pacientesDTO.ExamenNombre
+
+            };
+            _db.Pacientes.Update(modelo);
+            _db.SaveChanges();
 
             _logger.LogInformation("Paciente con ID: {Id} actualizado correctamente", id);
-            return NoContent();
+            return Ok(new { Message = $"Paciente con ID {id} actualizado correctamente.", Paciente = pacientesDTO });
+            //return NoContent();
+            
         }
 
         [HttpPatch("{id:int}")]
@@ -225,65 +258,84 @@ namespace MedIapp_API.Controllers
 
         public IActionResult UpdatePartialPaciente(int id, JsonPatchDocument<PacientesDTO>pacientePatchDto)
         {
-            _logger.LogInformation("Iniciando actualización de paciente con ID: {Id}", id);
+                _logger.LogInformation("Iniciando actualización parcial de paciente con ID: {Id}", id);
 
-            if (pacientePatchDto == null || id == 0)
-            {
-                _logger.LogWarning("Solicitud inválida. El DTO es nulo o el ID proporcionado no coincide. ID: {Id}", id);
-                return BadRequest();
-            }
-
-            var paciente = PacientesMockData.PacientesList.FirstOrDefault(v => v.Id == id);
-            if (paciente == null)
-            {
-                _logger.LogWarning("Paciente no encontrado con el ID: {Id}", id);
-                return NotFound();
-            }
-
-            try
-            {
-                _logger.LogInformation("Aplicando patch al paciente con ID: {Id}", id);
-                pacientePatchDto.ApplyTo(paciente, ModelState);
-
-                if (!ModelState.IsValid)
+                if (pacientePatchDto == null || id == 0)
                 {
-                    _logger.LogWarning("Patch inválido. Problemas de validación con el ModelState. ID: {Id}", id);
-                    return BadRequest(ModelState);
+                    _logger.LogWarning("Solicitud inválida. El DTO es nulo o el ID proporcionado no coincide. ID: {Id}", id);
+                    return BadRequest(new { Message = "Solicitud inválida. El DTO es nulo o el ID proporcionado no coincide." });
                 }
 
-                _logger.LogInformation("Paciente con ID: {Id} actualizado correctamente", id);
-                return NoContent();
+                var paciente = _db.Pacientes.AsNoTracking().FirstOrDefault(v => v.Id == id);
+                if (paciente == null)
+                {
+                    _logger.LogWarning("Paciente no encontrado con el ID: {Id}", id);
+                    return NotFound(new { Message = $"Paciente no encontrado con el ID {id}." });
+                }
+
+                var pacienteDto = new PacientesDTO
+                {
+                    Id = paciente.Id,
+                    Nombre = paciente.Nombre,
+                    Apellido = paciente.Apellido,
+                    Identificacion = paciente.Identificación,
+                    FechaNacimiento = paciente.FechaNacimiento,
+                    Telefono = paciente.Telefono,
+                    Direccion = paciente.Direccion,
+                    Email = paciente.Email,
+                    Observacion = paciente.Observacion,
+                    Examen = paciente.Examen,
+                    ExamenTipo = paciente.ExamenTipo,
+                    ExamenNombre = paciente.ExamenNombre
+                };
+
+                try
+                {
+                    _logger.LogInformation("Aplicando patch al paciente con ID: {Id}", id);
+                    pacientePatchDto.ApplyTo(pacienteDto, ModelState);
+
+                    if (!ModelState.IsValid)
+                    {
+                        _logger.LogWarning("Patch inválido. Problemas de validación con el ModelState. ID: {Id}", id);
+                        return BadRequest(ModelState);
+                    }
+
+                    // Obtener la entidad nuevamente para el rastreo
+                    var pacienteParaActualizar = _db.Pacientes.FirstOrDefault(v => v.Id == id);
+                    if (pacienteParaActualizar == null)
+                    {
+                        _logger.LogWarning("Paciente no encontrado con el ID: {Id}", id);
+                        return NotFound(new { Message = $"Paciente no encontrado con el ID {id}." });
+                    }
+
+                    // Actualiza los campos del paciente con los valores del DTO actualizado
+                    pacienteParaActualizar.Nombre = pacienteDto.Nombre;
+                    pacienteParaActualizar.Apellido = pacienteDto.Apellido;
+                    pacienteParaActualizar.Identificación = pacienteDto.Identificacion;
+                    pacienteParaActualizar.FechaNacimiento = pacienteDto.FechaNacimiento;
+                    pacienteParaActualizar.Telefono = pacienteDto.Telefono;
+                    pacienteParaActualizar.Direccion = pacienteDto.Direccion;
+                    pacienteParaActualizar.Email = pacienteDto.Email;
+                    pacienteParaActualizar.Observacion = pacienteDto.Observacion;
+                    pacienteParaActualizar.Examen = pacienteDto.Examen;
+                    pacienteParaActualizar.ExamenTipo = pacienteDto.ExamenTipo;
+                    pacienteParaActualizar.ExamenNombre = pacienteDto.ExamenNombre;
+
+                    _db.Pacientes.Update(pacienteParaActualizar);
+                    _db.SaveChanges();
+
+                    _logger.LogInformation("Paciente con ID: {Id} actualizado correctamente", id);
+                    return Ok(new { Message = $"Paciente con ID {id} actualizado correctamente." });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error al aplicar el patch al paciente con ID: {Id}", id);
+                    return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "Error interno del servidor." });
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al aplicar el patch al paciente con ID: {Id}", id);
-                return StatusCode(500, "Error interno del servidor");
-            }
 
-
-
-
-            //_logger.LogInformation("Iniciando actualización de paciente con ID: {Id}", id);
-
-            //if (pacientePatchDto == null || id == 0)
-            //{
-            //    _logger.LogWarning("Solicitud inválida. El DTO es nulo o el ID proporcionado no coincide. ID: {Id}", id);
-            //    return BadRequest();
-            //}
-
-            //var paciente = PacientesMockData.PacientesList.FirstOrDefault(v => v.Id == id);
-
-            //pacientePatchDto.ApplyTo(paciente, ModelState);
-
-            //if (!ModelState.IsValid)
-            //{
-            //    return BadRequest();
-            //}
-
-            //return NoContent();
         }
     }
-}
 
 
 
